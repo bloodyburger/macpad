@@ -1,0 +1,22 @@
+MacPad — development build
+
+This build is signed ad-hoc but NOT notarized by Apple, so macOS will refuse
+to open it on the first try. That is Gatekeeper doing its job on an unsigned
+download, not a broken app.
+
+To open it:
+
+  1. Drag MacPad.app to your Applications folder.
+  2. Right-click (or Control-click) MacPad.app and choose "Open".
+  3. Click "Open" in the dialog that appears.
+
+Only the first launch needs this. If step 2 is refused, run this in Terminal:
+
+  xattr -dr com.apple.quarantine /Applications/MacPad.app
+
+What to expect in this build: tabs, syntax highlighting, find and replace
+with Perl-syntax regular expressions, encodings, line endings, and sessions
+that come back after every launch. See docs/FEATURES.md in the repository
+for what is and is not done.
+
+MacPad is free software under the GNU GPL v3 or later.

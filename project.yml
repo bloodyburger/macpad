@@ -1,0 +1,195 @@
+# XcodeGen project definition for MacPad.
+#
+#   brew install xcodegen
+#   ./Tools/fetch-deps.sh     # populates Vendor/
+#   xcodegen generate         # produces MacPad.xcodeproj
+#
+# Or just run ./Tools/build.sh, which does all three.
+#
+# Scintilla and Lexilla are compiled directly into static library targets here
+# rather than via their own Xcode projects. Upstream's cocoa/checkbuildosx.sh
+# still refers to a "ScintillaFramework" directory that was renamed to
+# "cocoa/Scintilla", which is a good illustration of why depending on their
+# project layout is fragile. Compiling the sources ourselves also keeps the
+# deployment target and build flags under our control.
+#
+# Build settings mirror upstream's own project: C++17, libc++, ARC enabled
+# (Scintilla 5.x's Cocoa layer is ARC-clean — no manual retain/release and no
+# [super dealloc] anywhere in it).
+
+name: MacPad
+
+options:
+  bundleIdPrefix: com.macpad
+  deploymentTarget:
+    macOS: "13.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+
+settings:
+  base:
+    CLANG_CXX_LANGUAGE_STANDARD: "c++17"
+    CLANG_CXX_LIBRARY: "libc++"
+    CLANG_ENABLE_OBJC_ARC: YES
+    GCC_C_LANGUAGE_STANDARD: gnu11
+    ONLY_ACTIVE_ARCH: NO
+    ARCHS: "$(ARCHS_STANDARD)"        # arm64 + x86_64 universal
+    SWIFT_VERSION: "5.0"
+    GCC_WARN_ABOUT_RETURN_TYPE: YES
+    CLANG_WARN_DOCUMENTATION_COMMENTS: NO
+  configs:
+    Debug:
+      SWIFT_OPTIMIZATION_LEVEL: "-Onone"
+      GCC_OPTIMIZATION_LEVEL: "0"
+    Release:
+      SWIFT_OPTIMIZATION_LEVEL: "-O"
+      GCC_OPTIMIZATION_LEVEL: "s"
+
+targets:
+
+  # ---------------------------------------------------------------- Lexilla
+  # 125 language lexers + the lexer support library. Platform independent.
+  Lexilla:
+    type: library.static
+    platform: macOS
+    sources:
+      - path: Vendor/lexilla/lexlib
+        includes: ["*.cxx", "*.h"]
+      - path: Vendor/lexilla/src
+        includes: ["Lexilla.cxx", "*.h"]
+      - path: Vendor/lexilla/lexers
+        includes: ["*.cxx"]
+    settings:
+      base:
+        HEADER_SEARCH_PATHS:
+          - "$(SRCROOT)/Vendor/lexilla/include"
+          - "$(SRCROOT)/Vendor/lexilla/lexlib"
+          - "$(SRCROOT)/Vendor/scintilla/include"
+        # Upstream lexers are warning-noisy; don't fail our build on their style.
+        GCC_WARN_UNUSED_VARIABLE: NO
+        GCC_WARN_UNUSED_FUNCTION: NO
+
+  # -------------------------------------------------------------- Scintilla
+  # Platform-independent core (src/*.cxx) plus the Cocoa platform layer.
+  # The explicit cocoa file list matches upstream's own project exactly; the
+  # cocoa/ directory also contains Scintilla.xcodeproj, ScintillaTest/ and
+  # res/, which must not be swept into the build.
+  Scintilla:
+    type: library.static
+    platform: macOS
+    sources:
+      - path: Vendor/scintilla/src
+        includes: ["*.cxx", "*.h"]
+      # MacPad's own regex engine, which replaces Scintilla's built-in one via
+      # the SCI_OWNREGEX hook below. It lives in this target because it needs
+      # Scintilla's internal headers (Document.h and its chain).
+      - path: Sources/SearchEngine
+      - path: Vendor/scintilla/cocoa/PlatCocoa.mm
+      - path: Vendor/scintilla/cocoa/ScintillaCocoa.mm
+      - path: Vendor/scintilla/cocoa/ScintillaView.mm
+      - path: Vendor/scintilla/cocoa/InfoBar.mm
+      - path: Vendor/scintilla/cocoa
+        includes: ["*.h"]
+    settings:
+      base:
+        HEADER_SEARCH_PATHS:
+          - "$(SRCROOT)/Vendor/scintilla/include"
+          - "$(SRCROOT)/Vendor/scintilla/src"
+          - "$(SRCROOT)/Vendor/scintilla/cocoa"
+          - "$(SRCROOT)/Vendor/boost-regex/include"
+        # SCI_OWNREGEX suppresses the built-in regex factory at the foot of
+        # Document.cxx so that Sources/SearchEngine/MPRegexSearch.cxx provides
+        # CreateRegexSearch instead, which is how Boost.Regex is installed.
+        GCC_PREPROCESSOR_DEFINITIONS:
+          - "$(inherited)"
+          - "SCI_OWNREGEX=1"
+        GCC_WARN_UNUSED_VARIABLE: NO
+        GCC_WARN_UNUSED_FUNCTION: NO
+    dependencies:
+      - sdk: Cocoa.framework
+      - sdk: QuartzCore.framework
+
+  # ----------------------------------------------------------------- MacPad
+  MacPad:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources
+        # The regex engine belongs to the Scintilla target, which has
+        # Scintilla's internal headers and Boost on its search path. Without
+        # this exclusion the glob compiles it a second time here, where neither
+        # is available.
+        excludes:
+          - "SearchEngine/**"
+      # The app icon. Resources/Icon/README.md says how it is made.
+      - path: Resources/Icon/MacPad.icns
+        buildPhase: resources
+    dependencies:
+      - target: Scintilla
+      - target: Lexilla
+      - sdk: Cocoa.framework
+      - sdk: QuartzCore.framework
+    settings:
+      base:
+        PRODUCT_NAME: MacPad
+        PRODUCT_BUNDLE_IDENTIFIER: com.macpad.MacPad
+        SWIFT_OBJC_BRIDGING_HEADER: "Sources/ScintillaBridge/include/MacPad-Bridging-Header.h"
+        HEADER_SEARCH_PATHS:
+          - "$(SRCROOT)/Sources/ScintillaBridge/include"
+          - "$(SRCROOT)/Vendor/scintilla/include"
+          - "$(SRCROOT)/Vendor/scintilla/cocoa"
+          - "$(SRCROOT)/Vendor/lexilla/include"
+        # Scintilla's headers are not modular; keep the bridge as plain imports.
+        CLANG_ENABLE_MODULES: NO
+        COMBINE_HIDPI_IMAGES: YES
+    info:
+      path: Resources/Info.plist
+      properties:
+        CFBundleName: MacPad
+        CFBundleDisplayName: MacPad
+        CFBundleShortVersionString: "0.1.0"
+        CFBundleVersion: "1"
+        CFBundlePackageType: APPL
+        CFBundleIconFile: MacPad
+        # Where "Check for Updates" looks. GitHub's latest-release API by
+        # default; any URL serving MacPad's appcast JSON works too (see
+        # Sources/MacPadCore/UpdateChecker.swift for the format).
+        MacPadUpdateFeedURL: "https://api.github.com/repos/bloodyburger/macpad/releases/latest"
+        LSMinimumSystemVersion: "13.0"
+        NSHumanReadableCopyright: "MacPad is free software under the GNU GPL v3 or later."
+        NSPrincipalClass: NSApplication
+        NSSupportsAutomaticTermination: false
+        NSSupportsSuddenTermination: false
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: "Text Document"
+            CFBundleTypeRole: Editor
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - public.plain-text
+              - public.source-code
+              - public.text
+
+  # ------------------------------------------------------------- MacPadTests
+  MacPadTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests/Unit
+    dependencies:
+      - target: MacPad
+    settings:
+      base:
+        SWIFT_OBJC_BRIDGING_HEADER: "Sources/ScintillaBridge/include/MacPad-Bridging-Header.h"
+        HEADER_SEARCH_PATHS:
+          - "$(SRCROOT)/Sources/ScintillaBridge/include"
+          - "$(SRCROOT)/Vendor/scintilla/include"
+          - "$(SRCROOT)/Vendor/scintilla/cocoa"
+          - "$(SRCROOT)/Vendor/lexilla/include"
+        CLANG_ENABLE_MODULES: NO
+    scheme:
+      testTargets:
+        - MacPadTests
+      environmentVariables:
+        # Lets ScintillaConstantsTests read the vendored Scintilla.h and check
+        # the hard-coded message numbers against it.
+        MACPAD_SRCROOT: "$(SRCROOT)"

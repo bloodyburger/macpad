@@ -1,0 +1,427 @@
+# Builds MacPad.app on a macOS runner and packages it as a DMG.
+#
+# This exists because MacPad cannot be built anywhere but macOS: Xcode and the
+# macOS SDK are Apple-licensed and macOS-only, and Swift cannot cross-compile
+# AppKit from Linux. A GitHub-hosted macOS runner is therefore the compiler.
+#
+# The DMG is an unsigned, un-notarized development build. Opening it needs one
+# extra step on first launch; see the job summary it prints.
+
+name: Build DMG
+
+on:
+  push:
+    branches: ['**']
+    # A push to the default branch that passes every check below is also
+    # published as a GitHub release, numbered automatically; see the plan job
+    # and the release job. Nothing is tagged by hand. MacPad's Check for
+    # Updates and the website's download link both read the latest release.
+    paths-ignore:
+      - 'docs/**'
+      - 'README.md'
+      - 'LICENSE'
+  workflow_dispatch:
+
+concurrency:
+  group: build-dmg-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # --------------------------------------------------------------------- plan
+  # Decides, before anything is built, which version this build carries and
+  # whether it will be published. The version comes from Tools/next-version.sh:
+  # the last released version with its final number raised by one, or the
+  # version in project.yml when that has been raised past it. A build is
+  # published when it is on the default branch, its commit has not been
+  # released already, and its commit message does not contain [skip release].
+  plan:
+    name: Plan the version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      release: ${{ steps.plan.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - id: plan
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          git fetch --tags --force origin
+          VERSION="$(./Tools/next-version.sh)"
+          RELEASE=false
+          if [ "${GITHUB_REF}" != "refs/heads/${DEFAULT_BRANCH}" ]; then
+            WHY="not published: ${GITHUB_REF_NAME} is not the default branch (${DEFAULT_BRANCH})"
+          elif git tag --points-at HEAD | grep -q '^v[0-9]'; then
+            WHY="not published: this commit is already released as $(git tag --points-at HEAD | grep '^v[0-9]' | head -1)"
+          elif git log -1 --format=%B | grep -qF '[skip release]'; then
+            WHY="not published: the commit message contains [skip release]"
+          else
+            RELEASE=true
+            WHY="will be published as v${VERSION} once the build and its checks pass"
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "release=${RELEASE}" >> "$GITHUB_OUTPUT"
+          echo "MacPad ${VERSION}: ${WHY}"
+          echo "### MacPad ${VERSION}" >> "$GITHUB_STEP_SUMMARY"
+          echo "${WHY}" >> "$GITHUB_STEP_SUMMARY"
+
+  regex-conformance:
+    # Runs on Linux deliberately: the regex engine links only Scintilla's
+    # platform-independent core, so its conformance suite needs no macOS. It is
+    # the cheapest and fastest signal, so it gates the expensive job.
+    name: Regex conformance (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch dependencies
+        run: ./Tools/fetch-deps.sh
+
+      - name: Run conformance suite
+        run: ./Tests/Integration/run.sh
+
+  build:
+    name: Build and package
+    needs: [plan, regex-conformance]
+    runs-on: macos-15
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          sw_vers
+          xcodebuild -version
+          swift --version
+          echo "Available SDKs:"
+          xcodebuild -showsdks | grep macosx || true
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Fetch dependencies
+        run: ./Tools/fetch-deps.sh
+
+      # The version is decided by the plan job, not typed by hand, so the app's
+      # own version (About box, Check for Updates) always equals the release it
+      # ships in. The build number is this workflow run's number.
+      - name: Set the version
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: |
+          /usr/bin/sed -i '' -E \
+            -e "s/(CFBundleShortVersionString:[[:space:]]*)\"[^\"]*\"/\1\"${VERSION}\"/" \
+            -e "s/(CFBundleVersion:[[:space:]]*)\"[^\"]*\"/\1\"${GITHUB_RUN_NUMBER}\"/" \
+            project.yml
+          grep -n -E "CFBundleShortVersionString|CFBundleVersion" project.yml
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      # Unfiltered on purpose: when this fails, the full compiler output is the
+      # thing that is needed.
+      - name: Build (Release)
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project MacPad.xcodeproj \
+            -scheme MacPad \
+            -configuration Release \
+            -destination 'platform=macOS' \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            ONLY_ACTIVE_ARCH=NO
+
+      - name: Locate the app
+        id: locate
+        run: |
+          APP="$(find build/Build/Products -maxdepth 2 -name 'MacPad.app' -type d | head -1)"
+          if [ -z "${APP}" ]; then
+            echo "MacPad.app was not produced" >&2
+            find build/Build/Products -maxdepth 3 >&2 || true
+            exit 1
+          fi
+          echo "app=${APP}" >> "$GITHUB_OUTPUT"
+          echo "Found ${APP}"
+          echo "Architectures:"
+          lipo -info "${APP}/Contents/MacOS/MacPad" || true
+
+      - name: Ad-hoc sign
+        run: |
+          APP="${{ steps.locate.outputs.app }}"
+          # Ad-hoc signature only. This is not notarization: macOS will still
+          # quarantine the download, and the DMG instructions say how to open it.
+          codesign --force --deep --sign - --timestamp=none "${APP}"
+          codesign --verify --verbose=2 "${APP}"
+
+      - name: Build DMG
+        run: |
+          APP="${{ steps.locate.outputs.app }}"
+          VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' \
+                      "${APP}/Contents/Info.plist" 2>/dev/null || echo 0.1.0)"
+          # The app must carry the planned version. If it does not, a release
+          # would be named one thing and report another, and every copy would
+          # then offer itself an update forever.
+          if [ "${VERSION}" != "${{ needs.plan.outputs.version }}" ]; then
+            echo "::error::The built app says ${VERSION} but the planned version is ${{ needs.plan.outputs.version }}."
+            exit 1
+          fi
+          SHORT_SHA="$(git rev-parse --short HEAD)"
+          NAME="MacPad-${VERSION}-${SHORT_SHA}"
+
+          STAGE="$(mktemp -d)/MacPad"
+          mkdir -p "${STAGE}"
+          cp -R "${APP}" "${STAGE}/"
+          ln -s /Applications "${STAGE}/Applications"
+          cp "Resources/dmg/FIRST RUN - read me.txt" "${STAGE}/"
+
+          hdiutil create \
+            -volname "MacPad" \
+            -srcfolder "${STAGE}" \
+            -ov -format UDZO \
+            "${NAME}.dmg"
+
+          echo "DMG_NAME=${NAME}" >> "$GITHUB_ENV"
+          ls -lh "${NAME}.dmg"
+
+      - name: Upload DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.DMG_NAME }}
+          path: ${{ env.DMG_NAME }}.dmg
+          if-no-files-found: error
+          retention-days: 30
+
+      # After the upload on purpose: the DMG is already saved, so this can fail
+      # the job honestly without destroying the artifact. Tests build Debug,
+      # which is what @testable import needs (ENABLE_TESTABILITY).
+      # A launch crash is a build failure. This step would have caught the
+      # use-after-free in BufferStore.withDocument that shipped in the first
+      # DMG, so it is authoritative from here on. It runs after the upload so
+      # the artifact survives a failure and remains inspectable.
+      - name: Smoke launch
+        run: |
+          APP="${{ steps.locate.outputs.app }}"
+          BIN="${APP}/Contents/MacOS/MacPad"
+          echo "Launching ${BIN}"
+          set +e
+          # No update check here: a modal "update available" alert would
+          # sit on the main thread for the whole smoke run.
+          MACPAD_DUMP_LAYOUT=1 MACPAD_NO_UPDATE_CHECK=1 "${BIN}" > launch.log 2>&1 &
+          PID=$!
+          sleep 12
+          if kill -0 "${PID}" 2>/dev/null; then
+            echo "Still running after 12s — no launch crash."
+            kill "${PID}" 2>/dev/null
+            wait "${PID}" 2>/dev/null
+            STATUS=0
+          else
+            wait "${PID}"
+            STATUS=$?
+            echo "EXITED EARLY with status ${STATUS}"
+          fi
+          set -e
+          echo "--- stdout/stderr ---"
+          cat launch.log || true
+          if [ "${STATUS}" != "0" ]; then
+            echo "::error::MacPad crashed on launch (status ${STATUS}). See the crash report below."
+            exit 1
+          fi
+
+          # Liveness is not enough: two blank builds passed this step because a
+          # window that draws nothing is still a running process. The layout
+          # dump renders the editor and tab bar offscreen and counts distinct
+          # colours; one colour means it drew only its background.
+          if grep -q "BLANK" launch.log; then
+            echo "::error::A view rendered blank. See the layout dump above."
+            grep -E "render |BLANK" launch.log || true
+            exit 1
+          fi
+          if ! grep -q "render editor:.*drew content" launch.log; then
+            echo "::error::No editor render check in the output; the dump did not run."
+            exit 1
+          fi
+          echo "Render check passed:"
+          grep -E "render " launch.log || true
+
+      - name: Run tests
+        run: |
+          # Capture the status directly. Piping to grep with `|| true` and then
+          # reading PIPESTATUS takes the status of the compound rather than the
+          # pipeline, which once reported "** TEST FAILED **" as success.
+          set +e
+          xcodebuild test \
+            -project MacPad.xcodeproj \
+            -scheme MacPadTests \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            -derivedDataPath build-tests \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            > test-output.log 2>&1
+          STATUS=$?
+          set -e
+          echo "xcodebuild test exited ${STATUS}"
+          grep -E "Test Suite|Test Case .*(passed|failed)|Executed [0-9]+ test|error:|Testing failed|\*\* TEST" \
+            test-output.log | tail -60 || true
+          exit "${STATUS}"
+
+      # Always: its whole purpose is to explain a failure above. The unit tests
+      # run inside the app, so a launch crash yields only a bootstrap message
+      # from xcodebuild while the real stack trace sits in the crash report.
+      - name: Crash reports
+        if: always()
+        run: |
+          FOUND=0
+          for dir in "$HOME/Library/Logs/DiagnosticReports" \
+                     "/Library/Logs/DiagnosticReports"; do
+            [ -d "${dir}" ] || continue
+            for report in "${dir}"/MacPad*; do
+              [ -e "${report}" ] || continue
+              FOUND=1
+              echo "=============================================="
+              echo "${report}"
+              echo "=============================================="
+              # Print the faulting thread's frames one per line; the raw .ips
+              # puts them all on one enormous line.
+              python3 - "${report}" <<'PY_EOF'
+          import json, sys
+          raw = open(sys.argv[1]).read()
+          body = raw.split("\n", 1)[1] if "\n" in raw else raw
+          try:
+              report = json.loads(body)
+          except Exception as exc:
+              print(f"(could not parse: {exc})")
+              print(body[:4000])
+              sys.exit(0)
+          print("exception:", json.dumps(report.get("exception", {})))
+          print("termination:", json.dumps(report.get("termination", {})))
+          for thread in report.get("threads", []):
+              if not thread.get("triggered"):
+                  continue
+              print(f"\nfaulting thread (queue {thread.get('queue')}):")
+              for i, frame in enumerate(thread.get("frames", [])):
+                  symbol = frame.get("symbol", f"<image {frame.get('imageIndex')} + {frame.get('imageOffset')}>")
+                  where = frame.get("sourceFile", "")
+                  line = frame.get("sourceLine", "")
+                  location = f"  [{where}:{line}]" if where else ""
+                  print(f"  {i:>3}. {symbol}{location}")
+          PY_EOF
+            done
+          done
+          if [ "${FOUND}" = "0" ]; then
+            echo "No MacPad crash reports found."
+          fi
+
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "## MacPad build"
+            echo
+            if [ -n "${DMG_NAME:-}" ]; then
+              echo "DMG: \`${DMG_NAME}.dmg\` — download it from the **Artifacts**"
+              echo "section of this run's summary page."
+              echo
+              echo "### First launch"
+              echo
+              echo "The build is ad-hoc signed but not notarized, so macOS blocks"
+              echo "the first open. Right-click MacPad.app, choose **Open**, then"
+              echo "confirm. Only the first launch needs this."
+            else
+              echo "The build did not produce a DMG. See the failing step above."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ------------------------------------------------------------------ release
+  # Publishes the build as a GitHub release when the plan job said so, after
+  # the build job has built, smoke-launched and tested it. It takes the DMG the
+  # build job uploaded and attaches it under two names: MacPad-<version>.dmg,
+  # and MacPad.dmg, the stable name a website can link to as
+  # /releases/latest/download/MacPad.dmg. Each has a SHA-256 file.
+  #
+  # The release is created as a draft, and made public only once every asset is
+  # uploaded, so /latest never points at a half-uploaded release. Publishing
+  # creates the v<version> tag on this commit. Notes come from
+  # docs/releases/v<version>.md when that file exists, otherwise from the
+  # commit subjects since the previous release.
+  release:
+    name: Publish GitHub release
+    needs: [plan, build]
+    if: needs.plan.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Download the DMG built for this commit
+        uses: actions/download-artifact@v4
+        with:
+          pattern: MacPad-*
+          path: dist
+          merge-multiple: true
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: |
+          TAG="v${VERSION}"
+          git fetch --tags --force origin
+          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
+            echo "::error::${TAG} already exists; another run published it first."
+            exit 1
+          fi
+
+          SRC="$(ls dist/*.dmg | head -1)"
+          if [ -z "${SRC}" ]; then
+            echo "No DMG artifact found" >&2
+            exit 1
+          fi
+          DMG="dist/MacPad-${VERSION}.dmg"
+          mv "${SRC}" "${DMG}"
+          (cd dist && shasum -a 256 "MacPad-${VERSION}.dmg" | tee "MacPad-${VERSION}.dmg.sha256")
+          cp "${DMG}" dist/MacPad.dmg
+          (cd dist && shasum -a 256 MacPad.dmg > MacPad.dmg.sha256)
+
+          if [ -f "docs/releases/${TAG}.md" ]; then
+            cp "docs/releases/${TAG}.md" notes.md
+          else
+            PREVIOUS="$(git tag -l 'v[0-9]*' | sort -V | tail -1)"
+            {
+              echo "What changed in MacPad ${VERSION}:"
+              echo
+              git log --no-merges --format='- %s' ${PREVIOUS:+"${PREVIOUS}..HEAD"} | head -40
+            } > notes.md
+          fi
+          cat notes.md
+
+          # A cancelled earlier run can leave a draft behind under this tag.
+          if gh release list --limit 30 --json tagName,isDraft \
+               --jq ".[] | select(.isDraft and .tagName == \"${TAG}\") | .tagName" | grep -q .; then
+            gh release delete "${TAG}" --yes
+          fi
+
+          # Publish only after all assets, including the website aliases,
+          # have uploaded. Until then, /latest keeps serving the prior release.
+          gh release create "${TAG}" "${DMG}" "${DMG}.sha256" \
+            dist/MacPad.dmg dist/MacPad.dmg.sha256 \
+            --target "${GITHUB_SHA}" \
+            --title "MacPad ${VERSION}" \
+            --draft \
+            --notes-file notes.md
+          gh release edit "${TAG}" --draft=false
+          echo "Published https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}"
+          echo "Published [MacPad ${VERSION}](https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG})" >> "$GITHUB_STEP_SUMMARY"

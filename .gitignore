@@ -1,0 +1,26 @@
+# Vendored dependencies — fetched by Tools/fetch-deps.sh, never committed
+Vendor/
+
+# Generated Xcode project (XcodeGen output from project.yml)
+*.xcodeproj
+*.xcworkspace
+
+# Build output
+build/
+DerivedData/
+*.app
+*.dmg
+
+# macOS
+.DS_Store
+
+# Swift / SPM
+.build/
+.swiftpm/
+
+# Local DMG staging from Tools/build.sh and CI artifact downloads
+dist/
+
+# Info.plist written by XcodeGen from project.yml on every generate
+Resources/Info.plist
+Resources/Info *.plist

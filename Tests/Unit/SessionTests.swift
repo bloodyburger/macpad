@@ -29,7 +29,7 @@ final class SessionTests: XCTestCase {
             SessionEntry(filePath: "/tmp/notes/todo.md", displayName: "todo.md", untitledNumber: 0,
                          backupPath: nil, languageID: "markdown", encodingName: "UTF-8",
                          lineEnding: 2, isReadOnly: false, anchor: 10, caret: 14,
-                         firstVisibleLine: 3, originalModificationTime: 1_700_000_000),
+                         firstVisibleLine: 3, xOffset: 240, originalModificationTime: 1_700_000_000),
             SessionEntry(filePath: nil, displayName: "new 2", untitledNumber: 2,
                          backupPath: "/tmp/backup/new 2@ABCDEF12", languageID: "plain",
                          encodingName: "UTF-8-BOM", lineEnding: 0, isReadOnly: true,

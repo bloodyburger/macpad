@@ -13,16 +13,24 @@ full Perl-syntax regular expressions.
 
 **Status: early and usable.** Tabs, highlighting, search, encodings, line
 endings, drag and drop, session restore with autosave, and update checks work
-and are covered by 90 unit tests plus a 38-check regex conformance suite.
+and are covered by 94 unit tests plus a 38-check regex conformance suite.
 Preferences, Find in Files, split view, macros and plugins are still to come;
 [`docs/FEATURES.md`](docs/FEATURES.md) lists every feature and its state.
 
 ## Download
 
 The latest build is on the [Releases page](https://github.com/bloodyburger/macpad/releases/latest)
-as a universal disk image for macOS 13 and later. Open it, drag MacPad to
-Applications, then right-click MacPad and choose Open the first time; the build
-is signed but not notarised, so macOS asks once. The app offers newer versions
+as a universal disk image for macOS 13 and later. Open it and drag MacPad to
+Applications.
+
+The first time you open MacPad, macOS says it cannot verify the app, because
+the build is signed but not notarised by Apple. To allow it:
+
+- **macOS 15 or later:** open System Settings, go to Privacy & Security, scroll
+  down to the message about MacPad and click **Open Anyway**.
+- **macOS 13 and 14:** right-click MacPad in Applications and choose **Open**.
+
+Only the first launch needs this. After that the app offers newer versions
 itself through **MacPad → Check for Updates…**.
 
 ## What it does
@@ -79,11 +87,12 @@ To build a Release app and a disk image you can hand to someone:
 ```
 
 That writes `dist/MacPad-<version>.dmg`. Opening the image shows `MacPad.app`,
-a link to `/Applications` to drag it onto, and a short read-me. The app is
-signed but not notarised with Apple, so macOS blocks the first launch of a
-copy that came from a download. Right-click `MacPad.app` in `/Applications`,
-choose **Open**, and confirm. Only the first launch needs this. If that is
-refused too, clear the quarantine flag:
+a link to `/Applications` to drag it onto, and a short read-me. The image is
+named after its version, such as "MacPad 0.1.3", so several mounted at once
+can be told apart. The app is signed but not notarised with Apple, so macOS
+blocks the first launch of a copy that came from a download; the Download
+section above says how to allow it. To skip that step on your own Mac, clear
+the quarantine flag:
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/MacPad.app

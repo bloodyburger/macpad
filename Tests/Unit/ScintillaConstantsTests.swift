@@ -72,6 +72,8 @@ final class ScintillaConstantsTests: XCTestCase {
             ("SCI_GETFIRSTVISIBLELINE",  ScintillaMessage.getFirstVisibleLine),
             ("SCI_EMPTYUNDOBUFFER",      ScintillaMessage.emptyUndoBuffer),
             ("SCI_SETFIRSTVISIBLELINE",  ScintillaMessage.setFirstVisibleLine),
+            ("SCI_SETXOFFSET",           ScintillaMessage.setXOffset),
+            ("SCI_GETXOFFSET",           ScintillaMessage.getXOffset),
         ]
 
         for (name, ours) in expected {

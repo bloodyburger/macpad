@@ -7,8 +7,9 @@
 # Produces dist/MacPad-<version>.dmg, where <version> is the app's
 # CFBundleShortVersionString from project.yml. The image holds MacPad.app, a
 # link to /Applications to drag it onto, and "FIRST RUN - read me.txt", which
-# explains the right-click, Open that macOS demands of an app that is signed
-# but not notarised. This is the same layout CI's build-dmg.yml produces.
+# explains the one-time approval macOS demands of an app that is signed but
+# not notarised. The mounted image is named "MacPad <version>". This is the
+# same layout CI's build-dmg.yml produces.
 #
 # Requirements: the same as Tools/build.sh (Xcode command line tools, XcodeGen).
 
@@ -50,7 +51,7 @@ cp "${README}" "${STAGE}/MacPad/"
 mkdir -p "${DIST}"
 rm -f "${DMG}"
 hdiutil create \
-  -volname "MacPad" \
+  -volname "MacPad ${VERSION}" \
   -srcfolder "${STAGE}/MacPad" \
   -ov -format UDZO \
   -quiet \
@@ -60,5 +61,6 @@ echo
 echo "Packaged: ${DMG}"
 ls -lh "${DMG}" | awk '{print "    size: " $5}'
 echo
-echo "To install: open the image, drag MacPad.app onto Applications, then"
-echo "right-click MacPad.app in /Applications and choose Open the first time."
+echo "To install: open the image and drag MacPad.app onto Applications. On the"
+echo "first launch macOS asks for approval: System Settings > Privacy & Security >"
+echo "Open Anyway (macOS 13 and 14: right-click MacPad.app and choose Open)."

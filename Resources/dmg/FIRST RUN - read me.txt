@@ -1,18 +1,25 @@
-MacPad — development build
+MacPad: first launch
 
-This build is signed ad-hoc but NOT notarized by Apple, so macOS will refuse
-to open it on the first try. That is Gatekeeper doing its job on an unsigned
-download, not a broken app.
+This build is signed but NOT notarized by Apple, so macOS refuses to open it
+on the first try and says it cannot verify the app. That is macOS checking an
+unverified download, not a broken app.
 
 To open it:
 
   1. Drag MacPad.app to your Applications folder.
-  2. Right-click (or Control-click) MacPad.app and choose "Open".
-  3. Click "Open" in the dialog that appears.
+  2. Double-click MacPad. macOS shows a warning. Click Done.
+  3. Open System Settings, go to Privacy & Security, scroll down to the
+     message about MacPad, and click Open Anyway. Confirm when asked.
 
-Only the first launch needs this. If step 2 is refused, run this in Terminal:
+On macOS 13 and 14 there is a shorter way: right-click (or Control-click)
+MacPad.app, choose Open, then click Open in the dialog.
+
+Only the first launch needs this. If neither way works, run this in Terminal:
 
   xattr -dr com.apple.quarantine /Applications/MacPad.app
+
+Tip: eject older MacPad disk images before installing a new one. Each image
+is named after its version, so you can tell them apart.
 
 What to expect in this build: tabs, syntax highlighting, find and replace
 with Perl-syntax regular expressions, encodings, line endings, and sessions

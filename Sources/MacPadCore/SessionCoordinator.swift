@@ -103,6 +103,7 @@ final class SessionCoordinator {
                                     anchor: entry.anchor,
                                     caret: entry.caret,
                                     firstVisibleLine: entry.firstVisibleLine,
+                                    xOffset: entry.xOffset,
                                     backupURL: backupURL,
                                     modificationDate: entry.originalModificationTime > 0
                                         ? Date(timeIntervalSince1970: TimeInterval(entry.originalModificationTime))
@@ -198,6 +199,7 @@ final class SessionCoordinator {
             anchor: state.anchor,
             caret: state.caret,
             firstVisibleLine: state.firstVisibleLine,
+            xOffset: state.xOffset,
             originalModificationTime: Int(buffer.lastKnownModificationDate?.timeIntervalSince1970 ?? 0))
     }
 }

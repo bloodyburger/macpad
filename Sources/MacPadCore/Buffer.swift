@@ -57,6 +57,8 @@ final class Buffer {
     var savedAnchor: Int = 0
     var savedCaret: Int = 0
     var savedFirstVisibleLine: Int = 0
+    /// Sideways scroll, in pixels.
+    var savedXOffset: Int = 0
 
     /// Modification date at the time of the last load or save, for detecting
     /// changes made by other applications (M2 adds the FSEvents watcher).
@@ -230,6 +232,7 @@ final class BufferStore {
                        anchor: Int,
                        caret: Int,
                        firstVisibleLine: Int,
+                       xOffset: Int = 0,
                        backupURL: URL?,
                        modificationDate: Date?) throws -> Buffer {
         let doc = editor.createDocument()
@@ -252,6 +255,7 @@ final class BufferStore {
         buffer.savedAnchor = anchor
         buffer.savedCaret = caret
         buffer.savedFirstVisibleLine = firstVisibleLine
+        buffer.savedXOffset = xOffset
         buffers.append(buffer)
 
         configureNewlyCreated(buffer, initialText: text, restoredDirty: isDirty)
@@ -352,13 +356,14 @@ final class BufferStore {
 
     /// Caret, anchor and scroll position: live from the editor for the active
     /// buffer, parked values for the others.
-    func viewState(of buffer: Buffer) -> (anchor: Int, caret: Int, firstVisibleLine: Int) {
+    func viewState(of buffer: Buffer) -> (anchor: Int, caret: Int, firstVisibleLine: Int, xOffset: Int) {
         if activeBuffer === buffer {
             return (editor.send(ScintillaMessage.getAnchor),
                     editor.currentPosition,
-                    editor.send(ScintillaMessage.getFirstVisibleLine))
+                    editor.send(ScintillaMessage.getFirstVisibleLine),
+                    editor.send(ScintillaMessage.getXOffset))
         }
-        return (buffer.savedAnchor, buffer.savedCaret, buffer.savedFirstVisibleLine)
+        return (buffer.savedAnchor, buffer.savedCaret, buffer.savedFirstVisibleLine, buffer.savedXOffset)
     }
 
     /// The buffer's whole text, whether or not it is on screen.
@@ -370,16 +375,25 @@ final class BufferStore {
         buffer.savedCaret = editor.currentPosition
         buffer.savedAnchor = editor.send(ScintillaMessage.getAnchor)
         buffer.savedFirstVisibleLine = editor.send(ScintillaMessage.getFirstVisibleLine)
+        buffer.savedXOffset = editor.send(ScintillaMessage.getXOffset)
         buffer.isDirty = editor.isDirty
     }
 
+    /// Put the selection and the scroll position back exactly as they were.
+    ///
+    /// The scroll position goes back last and nothing scrolls after it. Setting
+    /// a selection makes Scintilla scroll the caret into view, and the caret is
+    /// often far from what was on screen: after typing or pasting it sits at
+    /// the end of the text while the reader has scrolled back up. Scrolling to
+    /// the caret here made a tab jump to its end every time it was returned to,
+    /// and every time the periodic backup read another tab's text.
     private func restoreViewState(from buffer: Buffer) {
         let limit = editor.length
         let anchor = min(max(0, buffer.savedAnchor), limit)
         let caret = min(max(0, buffer.savedCaret), limit)
         editor.setSelection(from: anchor, to: caret)
         editor.send(ScintillaMessage.setFirstVisibleLine, wparam: buffer.savedFirstVisibleLine)
-        editor.scrollCaretIntoView()
+        editor.send(ScintillaMessage.setXOffset, wparam: buffer.savedXOffset)
     }
 
     /// Run `body` with `buffer`'s document temporarily selected into the view,
@@ -404,11 +418,13 @@ final class BufferStore {
             return try body()
         }
 
-        var parkedState: (anchor: Int, caret: Int, firstLine: Int)?
+        var parkedState: (anchor: Int, caret: Int, firstLine: Int, xOffset: Int)?
         if let active = activeBuffer, active.documentPointer == previousDocument {
             captureViewState(into: active)
         } else {
-            parkedState = (editor.send(ScintillaMessage.getAnchor), editor.currentPosition, editor.send(ScintillaMessage.getFirstVisibleLine))
+            parkedState = (editor.send(ScintillaMessage.getAnchor), editor.currentPosition,
+                           editor.send(ScintillaMessage.getFirstVisibleLine),
+                           editor.send(ScintillaMessage.getXOffset))
         }
 
         // Hold the outgoing document ourselves so the switch below cannot be
@@ -429,6 +445,7 @@ final class BufferStore {
             if let parked = parkedState {
                 editor.setSelection(from: parked.anchor, to: parked.caret)
                 editor.send(ScintillaMessage.setFirstVisibleLine, wparam: parked.firstLine)
+                editor.send(ScintillaMessage.setXOffset, wparam: parked.xOffset)
             } else if let active = activeBuffer {
                 editor.applyTheme(theme, for: active.language)
                 restoreViewState(from: active)

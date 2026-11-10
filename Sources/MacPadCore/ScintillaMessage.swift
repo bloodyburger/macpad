@@ -19,6 +19,8 @@ enum ScintillaMessage {
     static let getAnchor: Int            = 2009
     static let setAnchor: Int            = 2026
     static let getFirstVisibleLine: Int  = 2152
+    static let setXOffset: Int           = 2397
+    static let getXOffset: Int           = 2398
     static let emptyUndoBuffer: Int      = 2175
     static let setFirstVisibleLine: Int  = 2613
 }

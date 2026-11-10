@@ -20,7 +20,8 @@ Milestone tags (`M1`–`M9`) refer to [`PLAN.md`](PLAN.md) §4.
 - [~] Reload from Disk
 - [~] Save · Save As… · Save All
 - [~] Close Tab · Close All but This (tab context menu)
-- [x] Session: tabs, carets and scroll positions restored on launch
+- [x] Session: tabs, carets and scroll positions (vertical and sideways) restored on launch
+- [x] A tab stays where it was scrolled to when you switch tabs or a backup runs
 - [x] Unsaved text backed up every 7 seconds and restored after a quit or a crash
 - [ ] Restore Recently Closed File
 - [ ] Show in Finder · Open in Terminal · Open in Default Viewer
@@ -205,7 +206,7 @@ Milestone tags (`M1`–`M9`) refer to [`PLAN.md`](PLAN.md) §4.
 
 - [x] Check for Updates: on demand and once a day at launch, from GitHub Releases or a hosted feed
 - [~] About panel · app icon and logo
-- [x] Universal binary (arm64 + x86_64), ad-hoc signed DMG
+- [x] Universal binary (arm64 + x86_64), ad-hoc signed DMG named after its version
 - [x] A release published automatically for every build of the main branch
 - [ ] Notarised DMG (opens without the right-click step) · Homebrew cask
 - [ ] Command-line arguments and a `macpad` command

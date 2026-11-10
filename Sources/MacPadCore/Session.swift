@@ -43,6 +43,8 @@ struct SessionEntry: Equatable {
     var anchor: Int
     var caret: Int
     var firstVisibleLine: Int
+    /// Sideways scroll, in pixels.
+    var xOffset: Int = 0
     /// Modification time of the file on disk when it was last loaded or saved,
     /// in seconds since 1970; 0 when unknown or untitled.
     var originalModificationTime: Int
@@ -72,7 +74,7 @@ enum SessionXML {
         for entry in session.entries {
             let file = XMLElement(name: "File")
             file.set("firstVisibleLine", String(entry.firstVisibleLine))
-            file.set("xOffset", "0")
+            file.set("xOffset", String(entry.xOffset))
             file.set("startPos", String(entry.anchor))
             file.set("endPos", String(entry.caret))
             file.set("selMode", "0")
@@ -143,6 +145,7 @@ enum SessionXML {
                 anchor: Int(file.get("startPos") ?? "0") ?? 0,
                 caret: Int(file.get("endPos") ?? "0") ?? 0,
                 firstVisibleLine: Int(file.get("firstVisibleLine") ?? "0") ?? 0,
+                xOffset: Int(file.get("xOffset") ?? "0") ?? 0,
                 originalModificationTime: Int(file.get("originalFileLastModifTimestamp") ?? "0") ?? 0))
         }
         return session

@@ -148,7 +148,9 @@ targets:
         CFBundleName: MacPad
         CFBundleDisplayName: MacPad
         CFBundleShortVersionString: "0.1.0"
-        CFBundleVersion: "1"
+        # "dev" marks a build made on a developer's Mac; the About box then
+        # reads "Version 0.1.0 (dev)". CI replaces it with the run number.
+        CFBundleVersion: "dev"
         CFBundlePackageType: APPL
         CFBundleIconFile: MacPad
         # Where "Check for Updates" looks. GitHub's latest-release API by

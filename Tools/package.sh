@@ -20,7 +20,7 @@ cd "${ROOT}"
 
 "${ROOT}/Tools/build.sh" release
 
-APP="${ROOT}/build/Build/Products/Release/MacPad.app"
+APP="${ROOT}/build.noindex/Build/Products/Release/MacPad.app"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "${APP}/Contents/Info.plist")"
 DIST="${ROOT}/dist"
 DMG="${DIST}/MacPad-${VERSION}.dmg"

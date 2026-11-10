@@ -83,7 +83,9 @@ That fetches and verifies the vendored dependencies, generates the Xcode
 project from `project.yml`, builds `MacPad.app` and signs it with the ad-hoc
 identity, which Apple silicon needs before it will launch any binary. The
 script prints where the app is and how to open it. A failed compile stops the
-script and points at the full compiler log under `build/`.
+script and points at the full compiler log under `build.noindex/`. That folder
+name keeps Spotlight from listing development builds beside the installed
+app, and a local build shows its build number as "dev" in the About box.
 
 To build a Release app and a disk image you can hand to someone:
 

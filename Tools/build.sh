@@ -10,6 +10,13 @@
 # before it will launch a binary at all. To make a DMG as well, run
 # ./Tools/package.sh, which calls this script in release mode.
 #
+# Everything is built into build.noindex/. The ".noindex" ending makes
+# Spotlight skip the folder, and the built app is unregistered from macOS
+# afterwards. Without both, a development build named "MacPad" turned up as
+# Spotlight's top result and was opened in place of the installed app. A
+# local build also reports its build number as "dev" in the About box, so it
+# cannot be mistaken for a release.
+#
 # Requirements (macOS only):
 #   Xcode command line tools   xcode-select --install
 #   XcodeGen                   brew install xcodegen
@@ -20,6 +27,15 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT}"
 
 MODE="${1:-debug}"
+BUILD_DIR="${ROOT}/build.noindex"
+LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+
+# Take a development build back out of macOS's list of installed apps.
+unregister() {
+  if [[ -x "${LSREGISTER}" && -d "$1" ]]; then
+    "${LSREGISTER}" -u "$1" >/dev/null 2>&1 || true
+  fi
+}
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
   echo "MacPad builds a macOS app bundle and needs Xcode; this is $(uname -s)." >&2
@@ -59,11 +75,14 @@ case "${MODE}" in
       -project MacPad.xcodeproj \
       -scheme MacPadTests \
       -destination 'platform=macOS' \
+      -derivedDataPath "${BUILD_DIR}" \
       CODE_SIGN_IDENTITY="-" \
       CODE_SIGNING_REQUIRED=NO \
       CODE_SIGNING_ALLOWED=NO \
       | tail -40
-    exit "${PIPESTATUS[0]}"
+    STATUS="${PIPESTATUS[0]}"
+    unregister "${BUILD_DIR}/Build/Products/Debug/MacPad.app"
+    exit "${STATUS}"
     ;;
   *)
     echo "Unknown mode “${MODE}”. Use debug, release or test." >&2
@@ -71,9 +90,9 @@ case "${MODE}" in
     ;;
 esac
 
-APP="${ROOT}/build/Build/Products/${CONFIG}/MacPad.app"
-LOG="${ROOT}/build/xcodebuild-${CONFIG}.log"
-mkdir -p "${ROOT}/build"
+APP="${BUILD_DIR}/Build/Products/${CONFIG}/MacPad.app"
+LOG="${BUILD_DIR}/xcodebuild-${CONFIG}.log"
+mkdir -p "${BUILD_DIR}"
 
 # Xcode's own signing step is turned off (CODE_SIGNING_ALLOWED=NO) and the app
 # is signed below instead. Signing inside xcodebuild fails whenever the checkout
@@ -92,7 +111,7 @@ xcodebuild build \
   -scheme MacPad \
   -configuration "${CONFIG}" \
   -destination 'generic/platform=macOS' \
-  -derivedDataPath build \
+  -derivedDataPath "${BUILD_DIR}" \
   CODE_SIGN_IDENTITY="-" \
   CODE_SIGNING_REQUIRED=NO \
   CODE_SIGNING_ALLOWED=NO \
@@ -120,10 +139,14 @@ echo
 echo "==> Signing MacPad.app (ad-hoc)"
 # Strip Finder metadata and resource forks, then sign every binary in the
 # bundle with the ad-hoc identity ("-"). This is not notarisation: macOS still
-# asks for a right-click, Open on the first launch of a downloaded copy.
+# asks for approval on the first launch of a downloaded copy.
 xattr -cr "${APP}"
 codesign --force --deep --sign - --timestamp=none "${APP}"
 codesign --verify --verbose=2 "${APP}"
+
+# xcodebuild registers what it builds as an installed app. Undo that, so
+# macOS keeps opening the copy in /Applications.
+unregister "${APP}"
 
 echo
 echo "Built: ${APP}"

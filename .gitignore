@@ -5,8 +5,9 @@ Vendor/
 *.xcodeproj
 *.xcworkspace
 
-# Build output
+# Build output. Local builds go to build.noindex/, which Spotlight skips.
 build/
+build.noindex/
 DerivedData/
 *.app
 *.dmg

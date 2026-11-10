@@ -185,6 +185,13 @@ jobs:
             echo "::error::The built app says ${VERSION} but the planned version is ${{ needs.plan.outputs.version }}."
             exit 1
           fi
+          # Likewise the build number: a release must never carry the "dev"
+          # marker of a local build.
+          BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "${APP}/Contents/Info.plist")"
+          if [ "${BUILD}" != "${GITHUB_RUN_NUMBER}" ]; then
+            echo "::error::The built app's build number is ${BUILD}, expected ${GITHUB_RUN_NUMBER}."
+            exit 1
+          fi
           SHORT_SHA="$(git rev-parse --short HEAD)"
           NAME="MacPad-${VERSION}-${SHORT_SHA}"
 

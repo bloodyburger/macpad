@@ -13,7 +13,7 @@ full Perl-syntax regular expressions.
 
 **Status: early and usable.** Tabs, highlighting, search, encodings, line
 endings, drag and drop, session restore with autosave, and update checks work
-and are covered by 71 unit tests plus a 38-check regex conformance suite.
+and are covered by 90 unit tests plus a 38-check regex conformance suite.
 Preferences, Find in Files, split view, macros and plugins are still to come;
 [`docs/FEATURES.md`](docs/FEATURES.md) lists every feature and its state.
 

@@ -10,11 +10,13 @@
 
 import AppKit
 
-final class EditorWindowController: NSWindowController {
+final class EditorWindowController: NSWindowController, NSMenuItemValidation {
 
-    private let editor = MPEditorView(frame: .zero)
+    // Not private: the unit tests drive the menu commands through the
+    // controller and check their effect on these two views.
+    let editor = MPEditorView(frame: .zero)
     private let tabBar = TabBarView(frame: .zero)
-    private let findBar = FindBarView(frame: .zero)
+    let findBar = FindBarView(frame: .zero)
     private let statusBar = StatusBarView(frame: .zero)
 
     private var findBarHeightConstraint: NSLayoutConstraint!
@@ -60,6 +62,7 @@ final class EditorWindowController: NSWindowController {
         findBar.delegate = self
         editor.delegate = self
         tabBar.onFileDrop = { [weak self] urls in self?.open(urls: urls) }
+        editor.contextMenu = makeEditorContextMenu()
 
         findBarHeightConstraint = findBar.heightAnchor.constraint(equalToConstant: 0)
         findBar.isHidden = true
@@ -378,16 +381,160 @@ final class EditorWindowController: NSWindowController {
 
     // MARK: - Edit commands
 
-    @objc func undoEdit(_ sender: Any?) { editor.undo() }
-    @objc func redoEdit(_ sender: Any?) { editor.redo() }
-    @objc func cutText(_ sender: Any?) { editor.cutSelection() }
-    @objc func copyText(_ sender: Any?) { editor.copySelection() }
-    @objc func pasteText(_ sender: Any?) { editor.pasteFromClipboard() }
-    @objc func selectAllText(_ sender: Any?) { editor.selectAllText() }
+    /// The text being edited in a text field, when that is where the keyboard
+    /// is: the find field or the replace field. Undo, Cut, Copy, Paste, Delete
+    /// and Select All then belong to that field, not to the document behind
+    /// it. Without this, pasting into the find field replaced text in the file.
+    private var focusedFieldText: NSText? {
+        guard let text = window?.firstResponder as? NSText,
+              !text.isDescendant(of: editor) else { return nil }
+        return text
+    }
+
+    @objc func undoEdit(_ sender: Any?) {
+        if let field = focusedFieldText { field.undoManager?.undo() } else { editor.undo() }
+    }
+    @objc func redoEdit(_ sender: Any?) {
+        if let field = focusedFieldText { field.undoManager?.redo() } else { editor.redo() }
+    }
+    @objc func cutText(_ sender: Any?) {
+        if let field = focusedFieldText { field.cut(sender) } else { editor.cutSelection() }
+    }
+    @objc func copyText(_ sender: Any?) {
+        if let field = focusedFieldText { field.copy(sender) } else { editor.copySelection() }
+    }
+    @objc func pasteText(_ sender: Any?) {
+        if let field = focusedFieldText { field.paste(sender) } else { editor.pasteFromClipboard() }
+    }
+    @objc func deleteText(_ sender: Any?) {
+        if let field = focusedFieldText { field.delete(sender) } else { editor.deleteSelection() }
+    }
+    @objc func selectAllText(_ sender: Any?) {
+        if let field = focusedFieldText { field.selectAll(sender) } else { editor.selectAllText() }
+    }
+
+    @objc func convertToUppercase(_ sender: Any?) { editor.uppercaseSelection() }
+    @objc func convertToLowercase(_ sender: Any?) { editor.lowercaseSelection() }
 
     @objc func toggleLineComment(_ sender: Any?) {
         guard let language = activeBuffer?.language else { return }
         editor.toggleLineComment(for: language)
+    }
+
+    @objc func blockComment(_ sender: Any?) {
+        guard let language = activeBuffer?.language else { return }
+        editor.blockComment(for: language)
+    }
+
+    @objc func blockUncomment(_ sender: Any?) {
+        guard let language = activeBuffer?.language else { return }
+        editor.blockUncomment(for: language)
+    }
+
+    /// Open the find bar on the selected text.
+    @objc func findSelection(_ sender: Any?) {
+        presentFindBar(withReplace: false)
+    }
+
+    /// Look the selected text up in the default browser.
+    @objc func searchWebForSelection(_ sender: Any?) {
+        guard let url = Self.webSearchURL(for: editor.selectedText) else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    /// The search address for a piece of selected text: its first line,
+    /// trimmed and capped at 200 characters. Nil when nothing is left.
+    static func webSearchURL(for selection: String) -> URL? {
+        let firstLine = selection.split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
+        let query = String(firstLine.trimmingCharacters(in: .whitespaces).prefix(200))
+        guard !query.isEmpty else { return nil }
+        var components = URLComponents(string: "https://www.google.com/search")
+        components?.queryItems = [URLQueryItem(name: "q", value: query)]
+        return components?.url
+    }
+
+    // MARK: - Menu state
+
+    /// Enables, disables and ticks menu items to match what they would do
+    /// right now, for the menu bar and the right-click menu alike. A command
+    /// that would do nothing is greyed out instead of silently ignored: Toggle
+    /// Line Comment in a plain-text tab, Copy with nothing selected.
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        let field = focusedFieldText
+        let inEditor = field == nil
+        let language = activeBuffer?.language
+        let hasSelection = field.map { $0.selectedRange.length > 0 } ?? editor.hasSelection
+
+        switch menuItem.action {
+        case #selector(undoEdit(_:)):
+            return field.map { $0.undoManager?.canUndo ?? false } ?? editor.canUndo
+        case #selector(redoEdit(_:)):
+            return field.map { $0.undoManager?.canRedo ?? false } ?? editor.canRedo
+        case #selector(cutText(_:)), #selector(copyText(_:)), #selector(deleteText(_:)):
+            return hasSelection
+        case #selector(pasteText(_:)):
+            return inEditor ? editor.canPaste : NSPasteboard.general.string(forType: .string) != nil
+        case #selector(convertToUppercase(_:)), #selector(convertToLowercase(_:)),
+             #selector(findSelection(_:)), #selector(searchWebForSelection(_:)):
+            return inEditor && hasSelection
+        case #selector(toggleLineComment(_:)):
+            return inEditor && language?.lineComment != nil
+        case #selector(blockComment(_:)), #selector(blockUncomment(_:)):
+            return inEditor && hasSelection && language?.blockComment != nil
+        case #selector(setLineEndingFromMenu(_:)):
+            menuItem.state = menuItem.tag == activeBuffer?.lineEnding.rawValue ? .on : .off
+            return activeBuffer != nil
+        case #selector(setLanguageFromMenu(_:)):
+            menuItem.state = (menuItem.representedObject as? String) == language?.id ? .on : .off
+            return activeBuffer != nil
+        case #selector(setEncodingFromMenu(_:)):
+            menuItem.state = menuItem.tag == Self.encodingMenuTag(for: activeBuffer?.encoding) ? .on : .off
+            return activeBuffer != nil
+        default:
+            return true
+        }
+    }
+
+    /// The Encoding menu's tag for an encoding; -1 when there is none.
+    private static func encodingMenuTag(for encoding: FileEncoding?) -> Int {
+        switch encoding {
+        case .utf8?: return 0
+        case .utf8WithBOM?: return 1
+        case .utf16LittleEndianWithBOM?: return 2
+        case .utf16BigEndianWithBOM?: return 3
+        case .singleByte?: return 4
+        case nil: return -1
+        }
+    }
+
+    // MARK: - Right-click menu
+
+    /// The menu for a right-click in the editor. Items carry no target, so
+    /// they travel the responder chain to this controller and are enabled by
+    /// validateMenuItem(_:), the same as the menu bar's.
+    private func makeEditorContextMenu() -> NSMenu {
+        let menu = NSMenu(title: "Editor")
+        func add(_ title: String, _ action: Selector) {
+            menu.addItem(NSMenuItem(title: title, action: action, keyEquivalent: ""))
+        }
+        add("Cut", #selector(cutText(_:)))
+        add("Copy", #selector(copyText(_:)))
+        add("Paste", #selector(pasteText(_:)))
+        add("Delete", #selector(deleteText(_:)))
+        add("Select All", #selector(selectAllText(_:)))
+        menu.addItem(.separator())
+        add("UPPERCASE", #selector(convertToUppercase(_:)))
+        add("lowercase", #selector(convertToLowercase(_:)))
+        menu.addItem(.separator())
+        add("Toggle Line Comment", #selector(toggleLineComment(_:)))
+        add("Block Comment", #selector(blockComment(_:)))
+        add("Block Uncomment", #selector(blockUncomment(_:)))
+        menu.addItem(.separator())
+        add("Find Selection", #selector(findSelection(_:)))
+        add("Search with Google", #selector(searchWebForSelection(_:)))
+        menu.addItem(.separator())
+        add("Toggle Bookmark", #selector(toggleBookmark(_:)))
+        return menu
     }
 
     @objc func toggleWordWrap(_ sender: Any?) {

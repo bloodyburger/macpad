@@ -72,6 +72,62 @@ extension MPEditorView {
         colourise(from: 0, to: -1)
     }
 
+    /// Wrap the selection in the language's block comment markers, such as
+    /// /* and */. Returns false when the language has none or nothing is
+    /// selected. One undo step; the commented text stays selected.
+    @discardableResult
+    func blockComment(for language: Language) -> Bool {
+        guard let markers = language.blockComment else { return false }
+        let start = selectionStart
+        let end = selectionEnd
+        guard end > start else { return false }
+
+        beginUndoAction()
+        defer { endUndoAction() }
+        // Close first, so inserting it does not shift the start position.
+        insertText(markers.close, atPosition: end)
+        insertText(markers.open, atPosition: start)
+        setSelection(from: start, to: end + markers.open.utf8.count + markers.close.utf8.count)
+        return true
+    }
+
+    /// Remove block comment markers from around the selection. Works whether
+    /// the selection includes the markers or sits just inside them. Returns
+    /// false when there are none to remove.
+    @discardableResult
+    func blockUncomment(for language: Language) -> Bool {
+        guard let markers = language.blockComment else { return false }
+        let openLength = markers.open.utf8.count
+        let closeLength = markers.close.utf8.count
+        var start = selectionStart
+        var end = selectionEnd
+
+        func isOpen(at position: Int) -> Bool {
+            position >= 0 && text(inByteRange: NSRange(location: position, length: openLength)) == markers.open
+        }
+        func isClose(at position: Int) -> Bool {
+            position >= 0 && text(inByteRange: NSRange(location: position, length: closeLength)) == markers.close
+        }
+
+        if end - start >= openLength + closeLength, isOpen(at: start), isClose(at: end - closeLength) {
+            // The selection includes both markers.
+        } else if isOpen(at: start - openLength), isClose(at: end) {
+            // The markers sit just outside the selection.
+            start -= openLength
+            end += closeLength
+        } else {
+            return false
+        }
+
+        beginUndoAction()
+        defer { endUndoAction() }
+        // Close first, so removing it does not shift the start position.
+        deleteByteRange(NSRange(location: end - closeLength, length: closeLength))
+        deleteByteRange(NSRange(location: start, length: openLength))
+        setSelection(from: start, to: end - openLength - closeLength)
+        return true
+    }
+
     /// Toggle a line comment on every line the selection touches, using the
     /// language's marker: if every affected line already starts with the
     /// marker, uncomment them all; otherwise comment them all.

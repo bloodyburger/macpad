@@ -125,12 +125,24 @@ enum MainMenu {
         add(menu, "Cut", #selector(EditorWindowController.cutText(_:)), "x")
         add(menu, "Copy", #selector(EditorWindowController.copyText(_:)), "c")
         add(menu, "Paste", #selector(EditorWindowController.pasteText(_:)), "v")
+        add(menu, "Delete", #selector(EditorWindowController.deleteText(_:)))
         add(menu, "Select All", #selector(EditorWindowController.selectAllText(_:)), "a")
+        menu.addItem(.separator())
+
+        let (caseItem, caseMenu) = submenu("Convert Case")
+        add(caseMenu, "UPPERCASE", #selector(EditorWindowController.convertToUppercase(_:)), "u",
+            [.command, .shift])
+        add(caseMenu, "lowercase", #selector(EditorWindowController.convertToLowercase(_:)), "u")
+        menu.addItem(caseItem)
         menu.addItem(.separator())
 
         // ⌘/ is the comment binding every Mac editor uses.
         add(menu, "Toggle Line Comment",
             #selector(EditorWindowController.toggleLineComment(_:)), "/")
+        add(menu, "Block Comment", #selector(EditorWindowController.blockComment(_:)), "/",
+            [.command, .option])
+        add(menu, "Block Uncomment", #selector(EditorWindowController.blockUncomment(_:)))
+        menu.addItem(.separator())
 
         let (lineEndingsItem, lineEndingsMenu) = submenu("Line Endings")
         for ending in LineEnding.allCases {

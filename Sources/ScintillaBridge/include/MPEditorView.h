@@ -127,6 +127,21 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)copySelection;
 - (void)pasteFromClipboard;
 - (void)selectAllText;
+/// Delete the selected text without touching the clipboard.
+- (void)deleteSelection;
+/// Change the case of the selected text in place; the selection stays.
+- (void)uppercaseSelection;
+- (void)lowercaseSelection;
+/// Whether any text is selected.
+@property(nonatomic, readonly) BOOL hasSelection;
+/// Whether the clipboard holds something the editor can paste.
+@property(nonatomic, readonly) BOOL canPaste;
+/// The text between two byte offsets. Uses Scintilla's target range, so a
+/// pending Replace must not rely on the target surviving this call.
+- (NSString *)textInByteRange:(NSRange)range NS_SWIFT_NAME(text(inByteRange:));
+/// The menu shown on right-click in the text and margins. Nil gives
+/// Scintilla's own basic menu.
+@property(nonatomic, strong, nullable) NSMenu *contextMenu;
 /// Collapse the undo history and mark the current state as the save point.
 - (void)markSavePoint;
 @property(nonatomic, readonly) BOOL isDirty;

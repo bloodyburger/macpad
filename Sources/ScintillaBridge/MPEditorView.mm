@@ -334,6 +334,34 @@ static const int kMarkerBookmark = 1;
 - (void)copySelection      { [self send:SCI_COPY]; }
 - (void)pasteFromClipboard { [self send:SCI_PASTE]; }
 - (void)selectAllText      { [self send:SCI_SELECTALL]; }
+- (void)deleteSelection    { [self send:SCI_CLEAR]; }
+- (void)uppercaseSelection { [self send:SCI_UPPERCASE]; }
+- (void)lowercaseSelection { [self send:SCI_LOWERCASE]; }
+- (BOOL)hasSelection       { return [self send:SCI_GETSELECTIONEMPTY] == 0; }
+- (BOOL)canPaste           { return [self send:SCI_CANPASTE] != 0; }
+
+- (NSString *)textInByteRange:(NSRange)range {
+	const NSInteger documentLength = self.length;
+	const NSInteger start = (NSInteger)range.location;
+	const NSInteger end = MIN((NSInteger)NSMaxRange(range), documentLength);
+	const NSInteger len = end - start;
+	if (start < 0 || len <= 0) {
+		return @"";
+	}
+	[self send:SCI_SETTARGETRANGE wparam:start lparam:end];
+	std::vector<char> buffer(static_cast<size_t>(len) + 1, '\0');
+	[self send:SCI_GETTARGETTEXT wparam:0 lparam:MPPtr(buffer.data())];
+	NSString *s = [[NSString alloc] initWithBytes:buffer.data()
+	                                       length:(NSUInteger)len
+	                                     encoding:NSUTF8StringEncoding];
+	return s ?: @"";
+}
+
+// ScintillaView asks its own -menuForEvent: first and falls back to
+// Scintilla's built-in menu only when that returns nil, so the view's menu
+// property is the hook for a custom right-click menu.
+- (NSMenu *)contextMenu { return _sci.menu; }
+- (void)setContextMenu:(NSMenu *)contextMenu { _sci.menu = contextMenu; }
 - (void)markSavePoint { [self send:SCI_SETSAVEPOINT]; }
 - (BOOL)isDirty    { return [self send:SCI_GETMODIFY] != 0; }
 

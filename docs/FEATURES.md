@@ -34,14 +34,19 @@ Milestone tags (`M1`–`M9`) refer to [`PLAN.md`](PLAN.md) §4.
 ## Edit `M5`
 
 ### Core
-- [~] Undo · Redo · Cut · Copy · Paste · Select All
+- [x] Undo · Redo · Cut · Copy · Paste · Delete · Select All
+- [x] The same commands act on the find and replace fields when the cursor is in them
+- [x] Commands that would do nothing are greyed out; Line Endings, Language and
+      Encoding menus tick the current choice
+- [x] Right-click menu in the editor: clipboard, case, comments, find, web search, bookmark
 - [~] Multiple selections, typing into all of them, multi-paste
 - [ ] Copy Full Path / File Name / Folder Path
 - [ ] Set / Clear Read-Only
 - [ ] Increase / Decrease Indent
 
 ### Convert case
-- [ ] UPPERCASE · lowercase · Proper Case · Sentence case · iNVERT cASE · rANdOM cAsE
+- [x] UPPERCASE · lowercase
+- [ ] Proper Case · Sentence case · iNVERT cASE · rANdOM cAsE
 
 ### Line operations
 - [ ] Duplicate Line · Remove Duplicate Lines · Remove Consecutive Duplicate Lines
@@ -52,15 +57,15 @@ Milestone tags (`M1`–`M9`) refer to [`PLAN.md`](PLAN.md) §4.
 - [ ] Sort Lines: lexicographic, case-insensitive, integer, decimal (comma or dot), natural; ascending and descending
 
 ### Comments
-- [~] Toggle Line Comment, per-language marker, one undo step
-- [ ] Block Comment · Block Uncomment
+- [x] Toggle Line Comment, per-language marker, one undo step
+- [x] Block Comment · Block Uncomment, for languages that have block markers
 
 ### Auto-completion
 - [ ] Word completion · Function completion · Parameter hints · Path completion
 - [ ] Auto-insert matching brackets, quotes and HTML/XML close tags
 
 ### Line endings
-- [~] Convert to Windows (CR LF) · Unix (LF) · classic Mac (CR)
+- [x] Convert to Windows (CR LF) · Unix (LF) · classic Mac (CR)
 - [x] Detected on open, preserved on save; new files use LF
 
 ### Blank operations
@@ -70,7 +75,8 @@ Milestone tags (`M1`–`M9`) refer to [`PLAN.md`](PLAN.md) §4.
 
 ### Paste special and selection actions
 - [ ] Paste HTML / RTF content · Copy / Cut / Paste binary content
-- [ ] Open selected File / Folder · Search the web for the selection
+- [x] Find Selection · Search the web for the selection
+- [ ] Open selected File / Folder
 
 ### Multi-editing and column mode
 - [ ] Multi-Select All (with match case / whole word variants)

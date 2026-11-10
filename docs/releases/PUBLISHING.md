@@ -17,6 +17,12 @@ version number. Nothing is tagged, bumped or uploaded by hand.
 A build that fails any check publishes nothing, and the previous release stays
 the latest.
 
+Only the current default-branch commit may publish. The workflow checks the
+remote branch head while planning and again immediately before publication.
+Re-running an older failed or cancelled build skips publication; it cannot
+relabel older code as the newest release. If the remote cannot be verified, the
+check fails closed.
+
 ## How the version is chosen
 
 `Tools/next-version.sh` decides, from two numbers:
@@ -65,6 +71,14 @@ appear in the app's "update available" alert.
 - `MacPad.dmg` and `MacPad.dmg.sha256`: exact copies under a name that never
   changes, so a website can link to the newest build without being updated.
 
+The release job downloads the exact artifact named by its build job, not every
+artifact retained by a workflow rerun. It checks the expected version and commit
+in the artifact name, verifies the two disk images are identical and their
+checksums pass, then uploads all four assets to a draft. Before publishing,
+`Tools/publish-release.sh` checks GitHub's uploaded asset names, sizes and SHA-256
+digests against the local files. Only then does it explicitly mark the release
+as latest and confirm that GitHub's latest-release endpoint points to its tag.
+
 Stable links:
 
 - `https://github.com/bloodyburger/macpad/releases/latest/download/MacPad.dmg`
@@ -86,6 +100,22 @@ A failed or cancelled run can leave a draft release behind. The next run
 removes a leftover draft for the same version before creating its own. Do not
 replace the files of a release that is already public; push a fix and let the
 next version go out.
+
+A draft is also left unpublished if the default branch advances during its
+upload. This is expected: the newer branch build is responsible for the next
+release. A failed latest-pointer verification is reported as a failure even if
+the release was published; inspect GitHub's designated latest release before
+retrying or making any manual change.
+
+Run the release regression checks without building the app:
+
+```sh
+python3 -m unittest discover -s Tests/Release -v
+```
+
+These use temporary local Git remotes and a mock GitHub CLI. They check current
+and obsolete commits, remote failures, stale artifacts, failed uploads, missing
+assets, digest mismatches and publication ordering.
 
 ## Building locally
 

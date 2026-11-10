@@ -53,8 +53,14 @@ jobs:
           git fetch --tags --force origin
           VERSION="$(./Tools/next-version.sh)"
           RELEASE=false
+          HEAD_STATUS=not-default
+          if [ "${GITHUB_REF}" = "refs/heads/${DEFAULT_BRANCH}" ]; then
+            HEAD_STATUS="$(./Tools/release-guard.sh "${GITHUB_SHA}" "${DEFAULT_BRANCH}")"
+          fi
           if [ "${GITHUB_REF}" != "refs/heads/${DEFAULT_BRANCH}" ]; then
             WHY="not published: ${GITHUB_REF_NAME} is not the default branch (${DEFAULT_BRANCH})"
+          elif [ "${HEAD_STATUS}" = obsolete ]; then
+            WHY="not published: this commit has been superseded on ${DEFAULT_BRANCH}"
           elif git tag --points-at HEAD | grep -q '^v[0-9]'; then
             WHY="not published: this commit is already released as $(git tag --points-at HEAD | grep '^v[0-9]' | head -1)"
           elif git log -1 --format=%B | grep -qF '[skip release]'; then
@@ -78,6 +84,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Test release safeguards
+        run: python3 -m unittest discover -s Tests/Release -v
+
       - name: Fetch dependencies
         run: ./Tools/fetch-deps.sh
 
@@ -89,6 +98,8 @@ jobs:
     needs: [plan, regex-conformance]
     runs-on: macos-15
     timeout-minutes: 45
+    outputs:
+      artifact_name: ${{ steps.package.outputs.artifact_name }}
 
     steps:
       - uses: actions/checkout@v4
@@ -162,6 +173,7 @@ jobs:
           codesign --verify --verbose=2 "${APP}"
 
       - name: Build DMG
+        id: package
         run: |
           APP="${{ steps.locate.outputs.app }}"
           VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' \
@@ -189,6 +201,7 @@ jobs:
             "${NAME}.dmg"
 
           echo "DMG_NAME=${NAME}" >> "$GITHUB_ENV"
+          echo "artifact_name=${NAME}" >> "$GITHUB_OUTPUT"
           ls -lh "${NAME}.dmg"
 
       - name: Upload DMG
@@ -369,59 +382,13 @@ jobs:
       - name: Download the DMG built for this commit
         uses: actions/download-artifact@v4
         with:
-          pattern: MacPad-*
+          name: ${{ needs.build.outputs.artifact_name }}
           path: dist
-          merge-multiple: true
 
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.plan.outputs.version }}
-        run: |
-          TAG="v${VERSION}"
-          git fetch --tags --force origin
-          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
-            echo "::error::${TAG} already exists; another run published it first."
-            exit 1
-          fi
-
-          SRC="$(ls dist/*.dmg | head -1)"
-          if [ -z "${SRC}" ]; then
-            echo "No DMG artifact found" >&2
-            exit 1
-          fi
-          DMG="dist/MacPad-${VERSION}.dmg"
-          mv "${SRC}" "${DMG}"
-          (cd dist && shasum -a 256 "MacPad-${VERSION}.dmg" | tee "MacPad-${VERSION}.dmg.sha256")
-          cp "${DMG}" dist/MacPad.dmg
-          (cd dist && shasum -a 256 MacPad.dmg > MacPad.dmg.sha256)
-
-          if [ -f "docs/releases/${TAG}.md" ]; then
-            cp "docs/releases/${TAG}.md" notes.md
-          else
-            PREVIOUS="$(git tag -l 'v[0-9]*' | sort -V | tail -1)"
-            {
-              echo "What changed in MacPad ${VERSION}:"
-              echo
-              git log --no-merges --format='- %s' ${PREVIOUS:+"${PREVIOUS}..HEAD"} | head -40
-            } > notes.md
-          fi
-          cat notes.md
-
-          # A cancelled earlier run can leave a draft behind under this tag.
-          if gh release list --limit 30 --json tagName,isDraft \
-               --jq ".[] | select(.isDraft and .tagName == \"${TAG}\") | .tagName" | grep -q .; then
-            gh release delete "${TAG}" --yes
-          fi
-
-          # Publish only after all assets, including the website aliases,
-          # have uploaded. Until then, /latest keeps serving the prior release.
-          gh release create "${TAG}" "${DMG}" "${DMG}.sha256" \
-            dist/MacPad.dmg dist/MacPad.dmg.sha256 \
-            --target "${GITHUB_SHA}" \
-            --title "MacPad ${VERSION}" \
-            --draft \
-            --notes-file notes.md
-          gh release edit "${TAG}" --draft=false
-          echo "Published https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}"
-          echo "Published [MacPad ${VERSION}](https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG})" >> "$GITHUB_STEP_SUMMARY"
+          ARTIFACT_NAME: ${{ needs.build.outputs.artifact_name }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: ./Tools/publish-release.sh

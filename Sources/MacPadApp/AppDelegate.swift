@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var windowController: EditorWindowController?
     private let updates = UpdateController()
+    private let install = InstallController()
 
     /// Files handed to us before the app finished launching, e.g. by opening
     /// MacPad via a double-clicked file.
@@ -32,6 +33,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         pendingURLs.removeAll()
 
         updates.scheduleLaunchCheck()
+        install.runLaunchChecks { [weak self] in
+            self?.windowController?.snapshotSession()
+        }
     }
 
     @objc func checkForUpdates(_ sender: Any?) {

@@ -207,6 +207,8 @@ Milestone tags (`M1`–`M9`) refer to [`PLAN.md`](PLAN.md) §4.
 - [x] Check for Updates: on demand and once a day at launch, from GitHub Releases or a hosted feed
 - [~] About panel · app icon and logo
 - [x] Universal binary (arm64 + x86_64), ad-hoc signed DMG named after its version
+- [x] Opened from its disk image, MacPad offers to move itself to Applications
+- [x] The installed copy ejects leftover MacPad disk images at launch
 - [x] A release published automatically for every build of the main branch
 - [ ] Notarised DMG (opens without the right-click step) · Homebrew cask
 - [ ] Command-line arguments and a `macpad` command

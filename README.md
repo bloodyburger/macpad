@@ -13,7 +13,7 @@ full Perl-syntax regular expressions.
 
 **Status: early and usable.** Tabs, highlighting, search, encodings, line
 endings, drag and drop, session restore with autosave, and update checks work
-and are covered by 94 unit tests plus a 38-check regex conformance suite.
+and are covered by 101 unit tests plus a 38-check regex conformance suite.
 Preferences, Find in Files, split view, macros and plugins are still to come;
 [`docs/FEATURES.md`](docs/FEATURES.md) lists every feature and its state.
 
@@ -32,6 +32,11 @@ the build is signed but not notarised by Apple. To allow it:
 
 Only the first launch needs this. After that the app offers newer versions
 itself through **MacPad → Check for Updates…**.
+
+If you open MacPad straight from the disk image, it says so and offers to move
+itself to Applications. Once it runs from Applications, it ejects any MacPad
+disk images still mounted, so an old copy cannot be opened by mistake. The
+downloaded `.dmg` files themselves are yours to delete.
 
 ## What it does
 

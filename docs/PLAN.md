@@ -63,6 +63,10 @@ project is generated from `project.yml` by XcodeGen.
   App Store: the sandbox would block running external commands, plugins and
   opening arbitrary folders as workspaces. Notarisation and a Homebrew cask are
   planned.
+- **Installing.** A disk image runs no code, so the app does the tidying:
+  opened from an image, it offers to move itself to Applications; opened from
+  Applications, it ejects MacPad images left mounted. Images are named after
+  their version.
 - **Updates.** The app checks GitHub Releases once a day and on demand. Every
   build of the main branch publishes a release; see
   [`releases/PUBLISHING.md`](releases/PUBLISHING.md).
